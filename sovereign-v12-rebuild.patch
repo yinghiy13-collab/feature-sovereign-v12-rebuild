@@ -1,0 +1,1388 @@
+diff --git a/.devcontainer/Dockerfile b/.devcontainer/Dockerfile
+new file mode 100644
+index 0000000..885beed
+--- /dev/null
++++ b/.devcontainer/Dockerfile
+@@ -0,0 +1,7 @@
++FROM python:3.12-slim
++
++ARG OPA_VERSION=1.22.0
++
++RUN apt-get update  && apt-get install -y --no-install-recommends curl git ca-certificates  && curl -fsSL -o /usr/local/bin/opa       "https://openpolicyagent.org/downloads/v${OPA_VERSION}/opa_linux_amd64_static"  && chmod +x /usr/local/bin/opa  && rm -rf /var/lib/apt/lists/*
++
++WORKDIR /workspace
+diff --git a/.devcontainer/devcontainer.json b/.devcontainer/devcontainer.json
+new file mode 100644
+index 0000000..4d1b8a8
+--- /dev/null
++++ b/.devcontainer/devcontainer.json
+@@ -0,0 +1,10 @@
++{
++  "name": "sovereign-v12-baseline",
++  "build": { "dockerfile": "Dockerfile" },
++  "postCreateCommand": "bash .devcontainer/post-create.sh",
++  "customizations": {
++    "vscode": {
++      "extensions": ["ms-python.python", "tsandall.opa"]
++    }
++  }
++}
+diff --git a/.devcontainer/post-create.sh b/.devcontainer/post-create.sh
+new file mode 100644
+index 0000000..90168d1
+--- /dev/null
++++ b/.devcontainer/post-create.sh
+@@ -0,0 +1,7 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++python3 -m pip install --quiet pytest jsonschema
++
++echo "Sovereign V12 baseline environment ready."
++echo "Reminder: Policy Agent evaluates only. Operator freezes. AO approves conditional risk."
+diff --git a/.github/workflows/sovereign-baseline.yml b/.github/workflows/sovereign-baseline.yml
+new file mode 100644
+index 0000000..7142c33
+--- /dev/null
++++ b/.github/workflows/sovereign-baseline.yml
+@@ -0,0 +1,47 @@
++name: Skill & Layout Checks
++
++on:
++  push:
++  pull_request:
++
++permissions:
++  contents: read
++
++jobs:
++  checks:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++
++      - name: Install test dependencies
++        run: python3 -m pip install --quiet pytest jsonschema
++
++      - name: Baseline package presence
++        run: |
++          test -f baseline/MASTER_STANDARD.md
++          test -f baseline/BASELINE_PIPELINE.md
++          test -f baseline/RISK_MANAGEMENT_PLAYBOOK.md
++          test -f baseline/memory.yaml
++          test -f baseline/MASTER_ARTIFACT.md
++
++      - name: Inventory listing
++        run: find . -path ./.git -prune -o -type f -print | sort
++
++      - name: Validate skill frontmatter
++        run: python3 scripts/validate_skills.py
++
++      - name: OPA policy tests
++        run: opa test policy/ -v
++
++      - name: Pytest (schema + release gate)
++        run: python3 -m pytest tests/test_evidence_bundle_schema.py tests/test_release_gate.py -v
++
++      - name: Release gate fail-closed self-test (placeholder must DENY)
++        run: |
++          OUTPUT=$(python3 tools/release/gate_check.py examples/placeholder_evidence_bundle.json 2>&1 || true)
++          echo "$OUTPUT"
++          echo "$OUTPUT" | grep -q "DENY"
+diff --git a/baseline/BASELINE_PIPELINE.md b/baseline/BASELINE_PIPELINE.md
+new file mode 100644
+index 0000000..e062959
+--- /dev/null
++++ b/baseline/BASELINE_PIPELINE.md
+@@ -0,0 +1,37 @@
++# BASELINE PIPELINE — Sovereign V12 Blue Prince Repro Hub
++
++Ten-phase lifecycle from bootstrap to recertification. Each phase lists inputs,
++the responsible role, and exit criteria. Formal semantics follow the phase list.
++
++## Phases
++
++| # | Phase | Responsible | Exit criteria |
++|---|-------|-------------|---------------|
++| 1 | Bootstrap | Operator | `baseline/` package complete; repo initialized; no anchor yet |
++| 2 | Intermediate Representation (IR) | Policy Agent | Source artifacts normalized into verifiable IR with sha256 digests |
++| 3 | Policy | Policy Agent | `policy/baseline.rego` evaluates bundles; all OPA tests pass |
++| 4 | Risk | AO + Operator | Every risk classified per `baseline/RISK_MANAGEMENT_PLAYBOOK.md` |
++| 5 | Evidence Bundle | Operator | Bundle assembled per `schemas/evidence_bundle.schema.json`; digest computed |
++| 6 | Seal | Operator | Seal created over bundle digest; recorded in ledger; status ACTIVE |
++| 7 | Auditor | External auditor | Independent audit; signoff recorded in bundle |
++| 8 | Attestation | Ledger | Attestation statement recorded (digest-only, no secrets) |
++| 9 | Release | Operator + AO | Release gate (`tools/release/gate_check.py`) outputs ALLOW |
++| 10 | Recertification | Operator + auditor | Cycle repeats; stale evidence (>120h, no exemption) blocks re-release |
++
++## Formal Semantics
++
++- **Freeze(B)**: `git rev-parse HEAD` over immutable commit set; anchor = sha256(HEAD).
++- **Anchor(x)**: sha256 digest hex of artifact x; must match `^[0-9a-f]{64}$`.
++- **Decision(e)**: `policy/baseline.rego` evaluated over evidence e; result ∈ {allow, deny}.
++- **Classification(r)**: per `baseline/RISK_MANAGEMENT_PLAYBOOK.md`, result ∈
++  {ACCEPTABLE, CONDITIONALLY_ACCEPTABLE, UNACCEPTABLE}.
++- **Stale(e)**: `now - evidence_timestamp > 120h` ∧ no recorded exemption.
++- **Release(B)**: allowed iff
++  `Anchor(B) valid ∧ Decision(bundle(B)) = allow ∧ Seal = ACTIVE ∧
++   Signoff(auditor) present ∧ Authorization(Operator) ∧ Authorization(AO)`.
++  Any conjunct missing → deny (fail-closed).
++
++## Prohibited
++
++- The pipeline never mints approvals, seals, or attestations automatically.
++- No phase downgrades a risk classification without AO action recorded in the ledger.
+diff --git a/baseline/MASTER_ARTIFACT.md b/baseline/MASTER_ARTIFACT.md
+new file mode 100644
+index 0000000..4cbf925
+--- /dev/null
++++ b/baseline/MASTER_ARTIFACT.md
+@@ -0,0 +1,28 @@
++# MASTER ARTIFACT — Sovereign V12 Blue Prince Repro Hub
++
++Digest-based artifact registry and lifecycle definitions. Digests below are
++placeholders (`<sha256:...>`) and are filled ONLY by the Operator at freeze
++time. Never insert a digest you have not computed from the artifact itself.
++
++## Artifact registry
++
++| artifact | digest | evidence ref | lifecycle state |
++|---|---|---|---|
++| baseline/MASTER_STANDARD.md | `<sha256:pending-freeze>` | — | DRAFT |
++| baseline/BASELINE_PIPELINE.md | `<sha256:pending-freeze>` | — | DRAFT |
++| baseline/RISK_MANAGEMENT_PLAYBOOK.md | `<sha256:pending-freeze>` | — | DRAFT |
++| baseline/memory.yaml | `<sha256:pending-freeze>` | — | DRAFT |
++| policy/baseline.rego | `<sha256:pending-freeze>` | opa test output | DRAFT |
++| schemas/evidence_bundle.schema.json | `<sha256:pending-freeze>` | pytest output | DRAFT |
++
++## Lifecycle states
++
++DRAFT → FROZEN → SEALED → RELEASED → RECERTIFIED
++
++- **DRAFT**: editable; no evidentiary value.
++- **FROZEN**: anchor recorded by Operator; content immutable.
++- **SEALED**: seal over bundle digest; ledger entry present.
++- **RELEASED**: gate ALLOW with auditor signoff + Operator/AO authorization.
++- **RECERTIFIED**: post-recertification re-anchor; returns to SEALED.
++
++Any digest mismatch from FROZEN onward invalidates the artifact (fail-closed).
+diff --git a/baseline/MASTER_STANDARD.md b/baseline/MASTER_STANDARD.md
+new file mode 100644
+index 0000000..0979a66
+--- /dev/null
++++ b/baseline/MASTER_STANDARD.md
+@@ -0,0 +1,40 @@
++# MASTER STANDARD — Sovereign V12 Blue Prince Repro Hub
++
++Version: 1.0.0 · Status: DRAFT (not frozen, not certified, not production-authorized)
++
++This standard is the normative root of the sovereign baseline package. Everything
++else in `baseline/` derives from the axioms below.
++
++## 1. Axioms
++
++1. **Evidence-first.** Every claim (policy pass, risk acceptance, seal validity,
++   release authorization) must cite verifiable evidence recorded in the evidence
++   bundle. Claims without evidence are treated as absent.
++2. **Fail-closed.** Any missing, malformed, expired, or unverifiable input denies
++   the operation by default. There is no implicit allow.
++3. **Immutable anchor.** A frozen baseline is identified by the SHA-256 digest of
++   the git HEAD commit at freeze time (`audit/BOOTSTRAP_ANCHOR.txt`, Operator
++   only). A frozen baseline is never rewritten; changes require a new freeze.
++4. **Separation of duties.** Four roles, no overlap:
++   | Role | May | May NOT |
++   |---|---|---|
++   | Policy Agent | evaluate evidence against policy | record, seal, authorize |
++   | Ledger | record events/digests | evaluate, authorize |
++   | Operator | freeze baseline, operate release gate execution | approve conditional risk |
++   | Authorizing Officer (AO) | approve CONDITIONALLY_ACCEPTABLE risk | evaluate policy, freeze |
++5. **Time-bound acceptance.** Conditional acceptance always carries a
++   remediation SLA (≤ 120 hours) and an expiry. Expired acceptance reverts to
++   UNACCEPTABLE until re-approved.
++6. **No over-claim.** No claim of SLSA L3, production readiness, or compliance
++   certification is made without a valid seal AND auditor signoff AND explicit
++   Operator/AO authorization.
++
++## 2. Non-goals
++
++- This package does not certify anything. It defines how evidence is produced,
++  evaluated, and gated.
++- The Policy Agent and the release gate evaluate only; they never write state.
++
++## 3. Precedence
++
++If any derived document conflicts with this standard, this standard wins.
+diff --git a/baseline/RISK_MANAGEMENT_PLAYBOOK.md b/baseline/RISK_MANAGEMENT_PLAYBOOK.md
+new file mode 100644
+index 0000000..8d960a4
+--- /dev/null
++++ b/baseline/RISK_MANAGEMENT_PLAYBOOK.md
+@@ -0,0 +1,51 @@
++# RISK MANAGEMENT PLAYBOOK — Sovereign V12 Blue Prince Repro Hub
++
++Normative reference for risk classification, compensating controls, SLAs, and
++escalation. Referenced by `baseline/BASELINE_PIPELINE.md` and `policy/baseline.rego`.
++
++## 1. Classifications
++
++| Classification | Meaning | Gate effect |
++|---|---|---|
++| ACCEPTABLE | Residual risk within tolerance; no extra conditions | May pass with valid evidence |
++| CONDITIONALLY_ACCEPTABLE | Tolerable only with AO approval + compensating controls + SLA + expiry | Passes only with all five required elements (see §2) |
++| UNACCEPTABLE | Outside tolerance | Always denies; stop work and escalate |
++
++## 2. Conditional acceptance — required elements (all five)
++
++1. `ao_approval`: explicit AO approval recorded (boolean true in the bundle).
++2. `compensating_controls`: non-empty array of applied controls (schema §3).
++3. `remediation_sla_hours`: positive number, ≤ 120.
++4. `expiry`: RFC 3339 timestamp after which acceptance is void.
++5. `ledger_anchor`: sha256 digest of the ledger entry recording the approval.
++
++Missing any element → treated as UNACCEPTABLE (fail-closed).
++
++## 3. Compensating control schema
++
++Each control: `control_id` (string, unique), `description` (string),
++`verifier` (role that checks it), optional `evidence_ref` (digest of proof).
++Controls are claims until their `evidence_ref` is verified.
++
++## 4. Canonical risk register (placeholder rows — classifications pending AO review)
++
++| risk_id | title | classification | sla_hours | owner | status |
++|---|---|---|---|---|---|
++| RISK-0001 | Unpinned build dependency | PENDING_REVIEW | — | Operator | OPEN |
++| RISK-0002 | Evidence staleness between audits | PENDING_REVIEW | — | Operator | OPEN |
++| RISK-0003 | Legacy witness machinery in tree (legacy `dist/`, `evidence/`) | PENDING_REVIEW | — | AO | OPEN |
++
++> Placeholder only. Live classification requires AO action recorded in the
++> ledger; this file is not an approval.
++
++## 5. SLA and staleness
++
++- Remediation SLA: 120 hours from acceptance. `policy/baseline.rego` denies
++  evidence older than 120 hours unless a recorded exemption applies.
++- Expired conditional acceptance reverts to UNACCEPTABLE automatically.
++
++## 6. Escalation
++
++Policy Agent detects → reports to Operator → Operator routes to AO → AO decides
++(classify / impose controls / reject). The Policy Agent never classifies live
++risk and never authorizes release.
+diff --git a/baseline/memory.yaml b/baseline/memory.yaml
+new file mode 100644
+index 0000000..26c53ea
+--- /dev/null
++++ b/baseline/memory.yaml
+@@ -0,0 +1,10 @@
++# Baseline state schema — PLACEHOLDER. No live state is recorded in this file.
++schema_version: "1.0"
++state: DRAFT            # DRAFT | FROZEN | SEALED | RELEASED | RECERTIFIED
++baseline_anchor: null   # sha256 of HEAD commit at freeze time (Operator fills at freeze)
++seals: []               # seal records: {seal_id, bundle_digest, status, created_at, expires_at}
++risk_register_ref: baseline/RISK_MANAGEMENT_PLAYBOOK.md
++ledger_ref: null        # pointer to ledger record set, set at freeze time
++notes: >-
++  Placeholder schema only. Per MASTER_STANDARD.md, only the Operator freezes,
++  and the Policy Agent never writes state here.
+diff --git a/docs/OPERATOR_FREEZE_RUNBOOK.md b/docs/OPERATOR_FREEZE_RUNBOOK.md
+new file mode 100644
+index 0000000..f116f5a
+--- /dev/null
++++ b/docs/OPERATOR_FREEZE_RUNBOOK.md
+@@ -0,0 +1,105 @@
++# OPERATOR FREEZE RUNBOOK — Sovereign V12 Blue Prince Repro Hub
++
++Audience: **Operator only.** The Policy Agent never performs these steps; the
++runbook exists so the Operator can freeze a baseline without ambiguity. Nothing
++here commits, pushes, tags, or authorizes release on its own.
++
++## 0. Absolute constraints
++
++- Do not commit, push, tag, or freeze unless you are the Operator.
++- Do not create `audit/BOOTSTRAP_ANCHOR.txt` until every pre-freeze check passes.
++- Never insert a digest, anchor, signature, or approval you did not compute or
++  receive through the proper role channel.
++
++## 1. Pre-freeze checklist
++
++Run all of the following from the repository root and confirm every item passes:
++
++```bash
++# 1. Review the baseline package contents
++ls -la baseline/
++
++# 2. Policy tests (7/7 required)
++opa test policy/ -v
++
++# 3. Schema and gate tests
++python3 -m pytest tests/ -v
++
++# 4. Skill frontmatter validation (5/5 required)
++python3 scripts/validate_skills.py
++
++# 5. Release gate fail-closed self-test: placeholder MUST deny
++python3 tools/release/gate_check.py examples/placeholder_evidence_bundle.json
++# expected: "DENY: ..." and exit code 1
++```
++
++If any step fails, stop. Fix, re-run. Never freeze a failing tree.
++
++## 2. Git init / clone procedure
++
++- **Fresh machine:** `git clone <remote>` then `git checkout <branch-to-freeze>`.
++- **No repo yet:** `git init`, add the remote, then commit the working tree per §3.
++- Confirm clean state: `git status` shows no unintended modifications.
++
++## 3. Commit procedure
++
++```bash
++git add -A
++git status                 # human review: only intended files
++git commit -m "freeze: baseline candidate <YYYY-MM-DD>"
++```
++
++Rules: one commit per freeze candidate; commit message contains no claims of
++certification (no "SLSA L3", no "production ready").
++
++## 4. HEAD SHA capture
++
++```bash
++git rev-parse HEAD
++```
++
++Record the printed SHA-256/SHA-1 commit id in the freeze declaration (§6). The
++baseline anchor is the hex digest of this commit as recorded by the Operator.
++
++## 5. `audit/BOOTSTRAP_ANCHOR.txt` (Operator only)
++
++Created **only** after §1–§4 pass. Suggested content:
++
++```
++BOOTSTRAP ANCHOR — Sovereign V12 Blue Prince Repro Hub
++created_by: <operator identity>
++created_at: <RFC 3339 timestamp>
++head_commit: <git rev-parse HEAD output>
++anchor_digest: <sha256 of the frozen tree per MASTER_ARTIFACT.md procedure>
++previous_anchor: none
++```
++
++## 6. Freeze declaration template
++
++```
++FREEZE DECLARATION
++date: <YYYY-MM-DD>
++operator: <identity>
++scope: baseline/ package + policy/ + schemas/ + tools/release/ + tests/
++head_commit: <commit id>
++anchor: audit/BOOTSTRAP_ANCHOR.txt
++checks: opa 7/7, pytest all pass, skills 5/5, placeholder DENY
++statement: From this point the frozen tree is immutable. Changes require a new
++           freeze cycle per baseline/BASELINE_PIPELINE.md phase 10.
++signature: <operator signature procedure per local policy>
++```
++
++## 7. Post-freeze verification
++
++```bash
++# anchor file exists and references the current HEAD
++cat audit/BOOTSTRAP_ANCHOR.txt
++git rev-parse HEAD
++
++# re-run the full checklist against the frozen tree
++opa test policy/ -v && python3 -m pytest tests/ -v && python3 scripts/validate_skills.py
++python3 tools/release/gate_check.py examples/placeholder_evidence_bundle.json || echo "placeholder DENY confirmed"
++```
++
++Record verification results in the ledger. Any mismatch → unfreeze is not
++possible; instead declare the freeze void and start a new cycle.
+diff --git a/docs/RELEASE_GATE_CONTRACT.md b/docs/RELEASE_GATE_CONTRACT.md
+new file mode 100644
+index 0000000..026f177
+--- /dev/null
++++ b/docs/RELEASE_GATE_CONTRACT.md
+@@ -0,0 +1,40 @@
++# RELEASE GATE CONTRACT — Sovereign V12 Blue Prince Repro Hub
++
++Normative contract for the release gate (`tools/release/gate_check.py`).
++The gate evaluates only; it never writes state and never authorizes by itself.
++
++## 1. Release requires ALL of the following
++
++1. **Frozen baseline** — a valid `baseline_anchor` (sha256) recorded by the
++   Operator (`audit/BOOTSTRAP_ANCHOR.txt`).
++2. **Intact evidence bundle** — `bundle_digest` matches the recomputed digest of
++   `baseline_anchor` + `members`; the member hash chain links back to the anchor
++   (`chain_intact`).
++3. **PASS policy decision** — `policy_decision == "PASS"`.
++4. **Acceptable risk** — `risk_status == "ACCEPTABLE"`, or
++   `CONDITIONALLY_ACCEPTABLE` with all five elements: AO approval, compensating
++   controls, remediation SLA (0 < sla <= 120h), expiry, ledger anchor.
++5. **Valid seal** — `seal_status == "ACTIVE"` (not expired, not revoked).
++6. **Auditor signoff** — `auditor_signoff.signed == true` with a named auditor.
++7. **Fresh evidence** — `evidence_age_hours <= 120` unless a recorded exemption
++   applies.
++8. **Operator authorization AND AO authorization** — recorded outside this tool
++   (the gate checks evidence of them, e.g. `ao_approval` for conditional risk).
++
++## 2. Fail-closed rule
++
++ANY missing, malformed, expired, or inconsistent element → **DENY**. There is
++no default-allow path. Non-finite numerics (NaN/Infinity) deny. Unparseable
++input denies. The placeholder bundle `examples/placeholder_evidence_bundle.json`
++must always DENY.
++
++## 3. Output contract
++
++- `ALLOW` on stdout, exit code 0 — all checks passed.
++- `DENY: <reasons>` on stdout, exit code 1 — one or more reasons listed.
++
++## 4. Prohibitions
++
++- The gate must never create or modify files, anchors, seals, or approvals.
++- The gate must never claim SLSA L3, certification, or production readiness.
++- A DENY is final for that bundle; fixing requires a new bundle and re-evaluation.
+diff --git a/examples/placeholder_evidence_bundle.json b/examples/placeholder_evidence_bundle.json
+new file mode 100644
+index 0000000..e29f139
+--- /dev/null
++++ b/examples/placeholder_evidence_bundle.json
+@@ -0,0 +1,11 @@
++{
++  "bundle_id": "B-PLACEHOLDER-0000",
++  "bundle_digest": "PLACEHOLDER_DIGEST_DO_NOT_USE",
++  "baseline_anchor": "PLACEHOLDER_ANCHOR_DO_NOT_USE",
++  "members": [],
++  "policy_decision": "FAIL",
++  "risk_status": "UNACCEPTABLE",
++  "seal_status": "REVOKED",
++  "auditor_signoff": { "auditor": "PLACEHOLDER", "signed": false },
++  "_comment": "Placeholder only. The release gate MUST output DENY for this file. Never ship, never sign, never seal this bundle."
++}
+diff --git a/policy/baseline.rego b/policy/baseline.rego
+new file mode 100644
+index 0000000..d56dc1d
+--- /dev/null
++++ b/policy/baseline.rego
+@@ -0,0 +1,79 @@
++# Policy Agent evaluates ONLY. It never records, seals, or authorizes.
++# Fail-closed: any missing or invalid input denies.
++
++package baseline.policy
++
++import rego.v1
++
++default allow := false
++
++SLA_HOURS := 120
++
++valid_sha256(value) if {
++	is_string(value)
++	regex.match(`^[0-9a-fA-F]{64}$`, value)
++}
++
++# A1: missing baseline anchor
++deny contains "missing baseline anchor" if {
++	not input.baseline_anchor
++}
++
++# A2: anchor is not a well-formed sha256 digest
++deny contains "baseline anchor is not a valid sha256 digest" if {
++	input.baseline_anchor
++	not valid_sha256(input.baseline_anchor)
++}
++
++# B: policy decision absent or unknown
++deny contains "missing or unknown policy decision" if {
++	not input.policy_decision in {"PASS", "FAIL"}
++}
++
++# C: explicit policy failure
++deny contains "policy evaluation failed" if {
++	input.policy_decision == "FAIL"
++}
++
++# D: stale evidence beyond 120h SLA without exemption
++deny contains "evidence stale beyond 120h SLA without exemption" if {
++	is_number(input.evidence_age_hours)
++	input.evidence_age_hours > SLA_HOURS
++	not input.staleness_exemption
++}
++
++# E: seal missing, expired, or revoked
++deny contains "seal missing, expired, or revoked" if {
++	not input.seal_status == "ACTIVE"
++}
++
++# F: unacceptable risk
++deny contains "risk classification is UNACCEPTABLE" if {
++	input.risk_status == "UNACCEPTABLE"
++}
++
++# F2: unknown risk classification (fail-closed)
++deny contains "missing or unknown risk status" if {
++	not input.risk_status in {"ACCEPTABLE", "CONDITIONALLY_ACCEPTABLE", "UNACCEPTABLE"}
++}
++
++# G: conditional acceptance without all five required elements
++deny contains "conditional acceptance missing required elements" if {
++	input.risk_status == "CONDITIONALLY_ACCEPTABLE"
++	not conditional_acceptance_complete
++}
++
++conditional_acceptance_complete if {
++	input.ao_approval == true
++	is_array(input.compensating_controls)
++	count(input.compensating_controls) > 0
++	is_number(input.remediation_sla_hours)
++	input.remediation_sla_hours > 0
++	input.remediation_sla_hours <= SLA_HOURS
++	input.expiry
++	valid_sha256(input.ledger_anchor)
++}
++
++allow if {
++	count(deny) == 0
++}
+diff --git a/policy/baseline_test.rego b/policy/baseline_test.rego
+new file mode 100644
+index 0000000..5716ef5
+--- /dev/null
++++ b/policy/baseline_test.rego
+@@ -0,0 +1,74 @@
++package baseline.policy
++
++import rego.v1
++
++anchor := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
++
++valid_input := {
++	"baseline_anchor": anchor,
++	"bundle_digest": anchor,
++	"policy_decision": "PASS",
++	"risk_status": "ACCEPTABLE",
++	"seal_status": "ACTIVE",
++	"evidence_age_hours": 24,
++}
++
++test_complete_acceptable_bundle_allowed if {
++	allow with input as valid_input
++}
++
++test_missing_or_invalid_anchor_denied if {
++	missing := object.remove(valid_input, ["baseline_anchor"])
++	not allow with input as missing
++	invalid := object.union(valid_input, {"baseline_anchor": "not-a-digest"})
++	not allow with input as invalid
++}
++
++test_policy_fail_or_missing_denied if {
++	failed := object.union(valid_input, {"policy_decision": "FAIL"})
++	not allow with input as failed
++	absent := object.remove(valid_input, ["policy_decision"])
++	not allow with input as absent
++}
++
++test_stale_evidence_rules if {
++	stale := object.union(valid_input, {"evidence_age_hours": 121})
++	not allow with input as stale
++	exempt := object.union(valid_input, {"evidence_age_hours": 121, "staleness_exemption": true})
++	allow with input as exempt
++	fresh := object.union(valid_input, {"evidence_age_hours": 120})
++	allow with input as fresh
++}
++
++test_seal_lifecycle_denied if {
++	expired := object.union(valid_input, {"seal_status": "EXPIRED"})
++	not allow with input as expired
++	revoked := object.union(valid_input, {"seal_status": "REVOKED"})
++	not allow with input as revoked
++	missing := object.remove(valid_input, ["seal_status"])
++	not allow with input as missing
++}
++
++test_unacceptable_risk_denied if {
++	bad := object.union(valid_input, {"risk_status": "UNACCEPTABLE"})
++	not allow with input as bad
++	unknown := object.union(valid_input, {"risk_status": "MAYBE"})
++	not allow with input as unknown
++}
++
++test_conditional_acceptance_gates if {
++	base := object.union(valid_input, {"risk_status": "CONDITIONALLY_ACCEPTABLE"})
++	not allow with input as base
++	complete := object.union(base, {
++		"ao_approval": true,
++		"compensating_controls": ["C-0001 RBAC-enforced read-only ledger"],
++		"remediation_sla_hours": 72,
++		"expiry": "2027-01-01T00:00:00Z",
++		"ledger_anchor": anchor,
++	})
++	allow with input as complete
++	incomplete := object.union(complete, {"ao_approval": false})
++	not allow with input as incomplete
++	oversla := object.union(complete, {"remediation_sla_hours": 121})
++	not allow with input as oversla
++}
+diff --git a/schemas/evidence_bundle.schema.json b/schemas/evidence_bundle.schema.json
+new file mode 100644
+index 0000000..f4e8cce
+--- /dev/null
++++ b/schemas/evidence_bundle.schema.json
+@@ -0,0 +1,61 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "https://blue-prince.local/schemas/evidence_bundle.schema.json",
++  "title": "Evidence Bundle",
++  "description": "Evidence bundle per baseline/BASELINE_PIPELINE.md phase 5. Evaluated by policy/baseline.rego and tools/release/gate_check.py.",
++  "type": "object",
++  "required": [
++    "bundle_id",
++    "bundle_digest",
++    "baseline_anchor",
++    "members",
++    "policy_decision",
++    "risk_status",
++    "seal_status",
++    "auditor_signoff"
++  ],
++  "additionalProperties": true,
++  "properties": {
++    "bundle_id": { "type": "string", "minLength": 1 },
++    "bundle_digest": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
++    "baseline_anchor": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
++    "members": {
++      "type": "array",
++      "items": { "$ref": "#/$defs/member" }
++    },
++    "policy_decision": { "enum": ["PASS", "FAIL"] },
++    "risk_status": { "enum": ["ACCEPTABLE", "CONDITIONALLY_ACCEPTABLE", "UNACCEPTABLE"] },
++    "seal_status": { "enum": ["ACTIVE", "EXPIRED", "REVOKED", "NONE"] },
++    "auditor_signoff": {
++      "type": "object",
++      "required": ["auditor", "signed"],
++      "additionalProperties": true,
++      "properties": {
++        "auditor": { "type": "string", "minLength": 1 },
++        "signed": { "type": "boolean" },
++        "signed_at": { "type": "string", "format": "date-time" }
++      }
++    },
++    "evidence_age_hours": { "type": "number", "minimum": 0 },
++    "staleness_exemption": { "type": "boolean" },
++    "ao_approval": { "type": "boolean" },
++    "compensating_controls": { "type": "array", "items": { "type": "string" } },
++    "remediation_sla_hours": { "type": "number", "exclusiveMinimum": 0 },
++    "expiry": { "type": "string", "format": "date-time" },
++    "ledger_anchor": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
++  },
++  "$defs": {
++    "member": {
++      "type": "object",
++      "required": ["member_id", "sha256"],
++      "additionalProperties": true,
++      "properties": {
++        "member_id": { "type": "string", "minLength": 1 },
++        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
++        "prev": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
++        "role": { "type": "string" },
++        "captured_at": { "type": "string", "format": "date-time" }
++      }
++    }
++  }
++}
+diff --git a/schemas/risk_record.schema.json b/schemas/risk_record.schema.json
+new file mode 100644
+index 0000000..a812e97
+--- /dev/null
++++ b/schemas/risk_record.schema.json
+@@ -0,0 +1,34 @@
++{
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "$id": "https://blue-prince.local/schemas/risk_record.schema.json",
++  "title": "Risk Record",
++  "description": "Risk record per baseline/RISK_MANAGEMENT_PLAYBOOK.md. Classification of live risk requires AO action; this schema validates record shape only.",
++  "type": "object",
++  "required": ["risk_id", "title", "classification", "likelihood", "impact", "owner", "status"],
++  "additionalProperties": true,
++  "properties": {
++    "risk_id": { "type": "string", "pattern": "^RISK-[0-9]{4}$" },
++    "title": { "type": "string", "minLength": 1 },
++    "classification": { "enum": ["ACCEPTABLE", "CONDITIONALLY_ACCEPTABLE", "UNACCEPTABLE", "PENDING_REVIEW"] },
++    "likelihood": { "enum": ["LOW", "MEDIUM", "HIGH"] },
++    "impact": { "enum": ["LOW", "MEDIUM", "HIGH"] },
++    "compensating_controls": {
++      "type": "array",
++      "items": {
++        "type": "object",
++        "required": ["control_id", "description"],
++        "additionalProperties": true,
++        "properties": {
++          "control_id": { "type": "string", "minLength": 1 },
++          "description": { "type": "string", "minLength": 1 },
++          "verifier": { "type": "string" },
++          "evidence_ref": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
++        }
++      }
++    },
++    "remediation_sla_hours": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
++    "expiry": { "type": "string", "format": "date-time" },
++    "owner": { "type": "string", "minLength": 1 },
++    "status": { "enum": ["OPEN", "MITIGATED", "ACCEPTED", "CLOSED"] }
++  }
++}
+diff --git a/scripts/validate_skills.py b/scripts/validate_skills.py
+new file mode 100644
+index 0000000..92b55a0
+--- /dev/null
++++ b/scripts/validate_skills.py
+@@ -0,0 +1,46 @@
++#!/usr/bin/env python3
++"""Validate SKILL.md frontmatter for every skill under skills/."""
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++SKILLS_DIR = ROOT / "skills"
++REQUIRED_FIELDS = ("name", "description")
++
++
++def parse_frontmatter(text):
++    if not text.startswith("---"):
++        return None
++    end = text.find("\n---", 3)
++    if end == -1:
++        return None
++    fields = {}
++    for line in text[3:end].splitlines():
++        if ":" in line:
++            key, _, value = line.partition(":")
++            fields[key.strip()] = value.strip().strip('"').strip("'")
++    return fields
++
++
++def main():
++    skill_files = sorted(p for p in SKILLS_DIR.rglob("SKILL.md") if p.is_file())
++    if not skill_files:
++        print("FAIL: no SKILL.md files found under skills/")
++        return 1
++    failures = 0
++    for path in skill_files:
++        rel = path.relative_to(ROOT)
++        fields = parse_frontmatter(path.read_text(encoding="utf-8"))
++        missing = [f for f in REQUIRED_FIELDS if not fields or not fields.get(f)]
++        if missing:
++            failures += 1
++            print(f"FAIL {rel}: missing frontmatter fields: {', '.join(missing)}")
++        else:
++            print(f"OK   {rel} (name={fields['name']})")
++    total = len(skill_files)
++    print(f"\nValidated {total} skill(s): {total - failures} OK, {failures} FAILED")
++    return 1 if failures else 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/seos-adversarial-test/SKILL.md b/skills/seos-adversarial-test/SKILL.md
+new file mode 100644
+index 0000000..8e00144
+--- /dev/null
++++ b/skills/seos-adversarial-test/SKILL.md
+@@ -0,0 +1,13 @@
++---
++name: seos-adversarial-test
++description: Adversarial test design for the fail-closed baseline: probes missing fields, malformed digests, stale evidence, broken chains, and non-finite numerics against policy and the release gate.
++---
++
++# SEOS Adversarial Test
++
++Generates adversarial inputs that MUST be denied. Canonical cases live in
++`tests/test_release_gate.py` and `policy/baseline_test.rego`.
++
++Never generate inputs intended to pass with fabricated approvals; synthetic
++digests only.
++
+diff --git a/skills/seos-design-pack/SKILL.md b/skills/seos-design-pack/SKILL.md
+new file mode 100644
+index 0000000..b25554a
+--- /dev/null
++++ b/skills/seos-design-pack/SKILL.md
+@@ -0,0 +1,10 @@
++---
++name: seos-design-pack
++description: Design pack for baseline documents: axiom layout, phase tables, classification taxonomy, and digest registry formats used under baseline/.
++---
++
++# SEOS Design Pack
++
++Provides document formats and naming conventions for the baseline package.
++Applying this pack does not freeze anything and does not certify anything.
++
+diff --git a/skills/seos-evidence-producer/SKILL.md b/skills/seos-evidence-producer/SKILL.md
+new file mode 100644
+index 0000000..9e7fbec
+--- /dev/null
++++ b/skills/seos-evidence-producer/SKILL.md
+@@ -0,0 +1,11 @@
++---
++name: seos-evidence-producer
++description: Produces evidence bundle skeletons conforming to schemas/evidence_bundle.schema.json: digests, member chains, and signoff slots — placeholders only, never real seals or approvals.
++---
++
++# SEOS Evidence Producer
++
++Builds schema-conformant bundle skeletons. All digests are computed from
++synthetic content. This skill never creates real anchors, seals, attestations,
++or signatures.
++
+diff --git a/skills/skill-creator/SKILL.md b/skills/skill-creator/SKILL.md
+new file mode 100644
+index 0000000..dcdc6c1
+--- /dev/null
++++ b/skills/skill-creator/SKILL.md
+@@ -0,0 +1,21 @@
++---
++name: skill-creator
++description: Meta-skill that defines how to author new skills in this repository: frontmatter contract, scope, and validation via scripts/validate_skills.py.
++---
++
++# Skill Creator
++
++Use this skill when adding a new skill to `skills/`.
++
++## Contract
++
++1. One directory per skill: `skills/<kebab-case-name>/SKILL.md`.
++2. YAML frontmatter with exactly at least `name` and `description` fields.
++3. `name` must match the directory name.
++4. Body states: purpose, when to use, inputs/outputs, and hard prohibitions.
++5. Skills never claim certification, never mint approvals, never write state.
++
++## Validation
++
++Run `python3 scripts/validate_skills.py` after adding or editing a skill.
++
+diff --git a/tests/test_evidence_bundle_schema.py b/tests/test_evidence_bundle_schema.py
+new file mode 100644
+index 0000000..df59a3d
+--- /dev/null
++++ b/tests/test_evidence_bundle_schema.py
+@@ -0,0 +1,65 @@
++"""Schema conformance tests (unittest style; pytest collects these too)."""
++import json
++import sys
++import unittest
++from pathlib import Path
++
++from jsonschema import Draft202012Validator
++
++ROOT = Path(__file__).resolve().parents[1]
++BUNDLE_SCHEMA = json.loads((ROOT / "schemas" / "evidence_bundle.schema.json").read_text(encoding="utf-8"))
++RISK_SCHEMA = json.loads((ROOT / "schemas" / "risk_record.schema.json").read_text(encoding="utf-8"))
++
++DIGEST = "ab" * 32
++
++
++def valid_bundle():
++    return {
++        "bundle_id": "B-TEST-0001",
++        "bundle_digest": DIGEST,
++        "baseline_anchor": DIGEST,
++        "members": [{"member_id": "m1", "sha256": DIGEST, "role": "policy"}],
++        "policy_decision": "PASS",
++        "risk_status": "ACCEPTABLE",
++        "seal_status": "ACTIVE",
++        "auditor_signoff": {"auditor": "auditor-1", "signed": True, "signed_at": "2026-11-01T00:00:00Z"},
++        "evidence_age_hours": 24,
++    }
++
++
++class EvidenceBundleSchemaTests(unittest.TestCase):
++    def test_valid_bundle_passes(self):
++        errors = list(Draft202012Validator(BUNDLE_SCHEMA).iter_errors(valid_bundle()))
++        self.assertEqual(errors, [])
++
++    def test_missing_required_field_fails(self):
++        bundle = valid_bundle()
++        del bundle["seal_status"]
++        errors = list(Draft202012Validator(BUNDLE_SCHEMA).iter_errors(bundle))
++        self.assertTrue(errors, "missing seal_status must fail validation")
++
++    def test_malformed_digest_fails(self):
++        bundle = valid_bundle()
++        bundle["bundle_digest"] = "not-a-digest"
++        errors = list(Draft202012Validator(BUNDLE_SCHEMA).iter_errors(bundle))
++        self.assertTrue(errors, "malformed bundle_digest must fail validation")
++
++
++class RiskRecordSchemaTests(unittest.TestCase):
++    def test_valid_risk_record_passes_and_bad_classification_fails(self):
++        record = {
++            "risk_id": "RISK-0001",
++            "title": "Unpinned build dependency",
++            "classification": "PENDING_REVIEW",
++            "likelihood": "MEDIUM",
++            "impact": "HIGH",
++            "owner": "Operator",
++            "status": "OPEN",
++        }
++        self.assertEqual(list(Draft202012Validator(RISK_SCHEMA).iter_errors(record)), [])
++        bad = dict(record, classification="FINE_PROBABLY")
++        self.assertTrue(list(Draft202012Validator(RISK_SCHEMA).iter_errors(bad)))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_release_gate.py b/tests/test_release_gate.py
+new file mode 100644
+index 0000000..c43f2d3
+--- /dev/null
++++ b/tests/test_release_gate.py
+@@ -0,0 +1,163 @@
++"""Release gate tests -- 14 cases (unittest style; pytest collects these too).
++
++Builds bundles via the same helpers as gate_check so digests/chains are
++consistent. Only synthetic digests are used; no real anchors or approvals.
++"""
++import json
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "tools" / "release"))
++import gate_check as gc  # noqa: E402
++
++ANCHOR = "cd" * 32
++
++
++def make_member(member_id, prev, payload=""):
++    sha = gc.canonical_sha256({"prev": prev, "member_id": member_id, "payload": payload})
++    return {"member_id": member_id, "prev": prev, "sha256": sha, "payload": payload}
++
++
++def make_bundle(**overrides):
++    m1 = make_member("m1", ANCHOR)
++    m2 = make_member("m2", m1["sha256"])
++    bundle = {
++        "bundle_id": "B-TEST-0001",
++        "baseline_anchor": ANCHOR,
++        "members": [m1, m2],
++        "policy_decision": "PASS",
++        "risk_status": "ACCEPTABLE",
++        "seal_status": "ACTIVE",
++        "auditor_signoff": {"auditor": "auditor-1", "signed": True, "signed_at": "2026-11-01T00:00:00Z"},
++        "evidence_age_hours": 24,
++    }
++    bundle.update(overrides)
++    if "bundle_digest" not in overrides:
++        bundle["bundle_digest"] = gc.expected_bundle_digest(bundle)
++    return bundle
++
++
++class ReleaseGateTests(unittest.TestCase):
++    def setUp(self):
++        self._tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self._tmp.cleanup)
++        self.dir = Path(self._tmp.name)
++
++    def write_bundle(self, bundle):
++        path = self.dir / "bundle.json"
++        path.write_text(json.dumps(bundle), encoding="utf-8")
++        return str(path)
++
++    def evaluate(self, bundle):
++        return gc.evaluate(bundle) if isinstance(bundle, dict) else gc.evaluate(json.loads(bundle))
++
++    # 1
++    def test_valid_full_bundle_allows(self):
++        allowed, reasons = self.evaluate(make_bundle())
++        self.assertTrue(allowed, f"expected ALLOW, got {reasons}")
++
++    # 2
++    def test_missing_anchor_denies(self):
++        bundle = make_bundle()
++        del bundle["baseline_anchor"]
++        bundle["bundle_digest"] = gc.expected_bundle_digest(bundle)
++        allowed, reasons = self.evaluate(bundle)
++        self.assertFalse(allowed)
++        self.assertTrue(any("anchor" in r for r in reasons))
++
++    # 3
++    def test_malformed_anchor_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(baseline_anchor="not-a-digest"))
++        self.assertFalse(allowed)
++
++    # 4
++    def test_fail_policy_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(policy_decision="FAIL"))
++        self.assertFalse(allowed)
++        self.assertTrue(any("policy" in r for r in reasons))
++
++    # 5
++    def test_expired_or_revoked_seal_denies(self):
++        for status in ("EXPIRED", "REVOKED", "NONE"):
++            allowed, _ = self.evaluate(make_bundle(seal_status=status))
++            self.assertFalse(allowed, f"seal_status={status} must DENY")
++
++    # 6
++    def test_missing_auditor_signoff_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(auditor_signoff=None))
++        self.assertFalse(allowed)
++        self.assertTrue(any("signoff" in r for r in reasons))
++
++    # 7
++    def test_unsigned_signoff_denies(self):
++        allowed, _ = self.evaluate(make_bundle(auditor_signoff={"auditor": "auditor-1", "signed": False}))
++        self.assertFalse(allowed)
++
++    # 8
++    def test_unacceptable_risk_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(risk_status="UNACCEPTABLE"))
++        self.assertFalse(allowed)
++        self.assertTrue(any("UNACCEPTABLE" in r for r in reasons))
++
++    # 9
++    def test_broken_chain_denies(self):
++        bundle = make_bundle()
++        bundle["members"][1]["prev"] = "ef" * 32  # wrong link
++        allowed, reasons = self.evaluate(bundle)
++        self.assertFalse(allowed)
++        self.assertTrue(any("chain" in r for r in reasons))
++
++    # 10
++    def test_digest_mismatch_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(bundle_digest="ab" * 32))
++        self.assertFalse(allowed)
++        self.assertTrue(any("digest" in r for r in reasons))
++
++    # 11
++    def test_non_finite_numeric_denies(self):
++        raw = json.dumps(make_bundle()).replace('"evidence_age_hours": 24', '"evidence_age_hours": Infinity')
++        path = self.write_bundle_raw(raw)
++        with self.assertRaises(ValueError):
++            gc.load_bundle(path)
++        exit_code = gc.main([path])
++        # main catches the parse error and DENYs
++        self.assertEqual(exit_code, 1)
++
++    def write_bundle_raw(self, raw):
++        path = self.dir / "raw.json"
++        path.write_text(raw, encoding="utf-8")
++        return str(path)
++
++    # 12
++    def test_conditional_acceptable_incomplete_denies(self):
++        allowed, reasons = self.evaluate(make_bundle(risk_status="CONDITIONALLY_ACCEPTABLE"))
++        self.assertFalse(allowed)
++        self.assertTrue(len(reasons) >= 4, "all missing conditional elements must be reported")
++
++    # 13
++    def test_conditional_acceptable_complete_allows(self):
++        bundle = make_bundle(
++            risk_status="CONDITIONALLY_ACCEPTABLE",
++            ao_approval=True,
++            compensating_controls=["C-0001 read-only enforcement"],
++            remediation_sla_hours=72,
++            expiry="2027-01-01T00:00:00Z",
++            ledger_anchor="ef" * 32,
++        )
++        allowed, reasons = self.evaluate(bundle)
++        self.assertTrue(allowed, f"expected ALLOW, got {reasons}")
++
++    # 14
++    def test_placeholder_example_denies(self):
++        placeholder = ROOT / "examples" / "placeholder_evidence_bundle.json"
++        allowed, reasons = gc.evaluate(gc.load_bundle(str(placeholder)))
++        self.assertFalse(allowed)
++        self.assertTrue(reasons)
++        self.assertEqual(gc.main([str(placeholder)]), 1)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tools/audit/dashboard.py b/tools/audit/dashboard.py
+new file mode 100644
+index 0000000..12f70cb
+--- /dev/null
++++ b/tools/audit/dashboard.py
+@@ -0,0 +1,112 @@
++#!/usr/bin/env python3
++"""Read-only audit dashboard for evidence bundles.
++
++Four views: Matrix, Timeline Replay, Risk Register, Seal Lifecycle.
++Evaluates/prints only -- this tool NEVER writes to disk or network.
++"""
++import argparse
++import json
++import sys
++
++VIEWS = ("matrix", "timeline", "risk", "seal")
++
++
++def load_bundle(path):
++    with open(path, "r", encoding="utf-8") as fh:
++        return json.load(fh)
++
++
++def view_matrix(bundle):
++    print("== Matrix View ==")
++    rows = [
++        ("bundle_id", bundle.get("bundle_id")),
++        ("baseline_anchor", bundle.get("baseline_anchor")),
++        ("bundle_digest", bundle.get("bundle_digest")),
++        ("policy_decision", bundle.get("policy_decision")),
++        ("risk_status", bundle.get("risk_status")),
++        ("seal_status", bundle.get("seal_status")),
++        ("auditor_signed", (bundle.get("auditor_signoff") or {}).get("signed")),
++    ]
++    width = max(len(k) for k, _ in rows)
++    for key, value in rows:
++        print(f"  {key:<{width}} : {value}")
++    members = bundle.get("members") or []
++    print(f"  members                : {len(members)}")
++    for m in members:
++        print(f"    - {m.get('member_id')}: {m.get('sha256', '<no digest>')[:16]}... role={m.get('role', '-')}")
++
++
++def view_timeline(bundle):
++    print("== Timeline Replay ==")
++    events = []
++    for m in bundle.get("members") or []:
++        if m.get("captured_at"):
++            events.append((m["captured_at"], f"member captured: {m.get('member_id')}"))
++    signoff = bundle.get("auditor_signoff") or {}
++    if signoff.get("signed_at"):
++        events.append((signoff["signed_at"], f"auditor signoff: {signoff.get('auditor')}"))
++    for key in ("sealed_at", "expires", "expiry"):
++        if bundle.get(key):
++            events.append((bundle[key], f"{key}"))
++    if bundle.get("evidence_age_hours") is not None:
++        events.append((f"age={bundle['evidence_age_hours']}h", "staleness check (SLA 120h)"))
++    if not events:
++        print("  (no timestamped events in bundle)")
++        return
++    for ts, desc in sorted(events, key=lambda e: str(e[0])):
++        print(f"  {ts}  {desc}")
++
++
++def view_risk(bundle):
++    print("== Risk Register ==")
++    print(f"  risk_status           : {bundle.get('risk_status')}")
++    if bundle.get("risk_status") == "CONDITIONALLY_ACCEPTABLE":
++        print(f"  ao_approval           : {bundle.get('ao_approval')}")
++        controls = bundle.get("compensating_controls") or []
++        print(f"  compensating_controls : {len(controls)}")
++        for c in controls:
++            print(f"    - {c}")
++        print(f"  remediation_sla_hours : {bundle.get('remediation_sla_hours')}")
++        print(f"  expiry                : {bundle.get('expiry')}")
++        print(f"  ledger_anchor         : {bundle.get('ledger_anchor')}")
++    for record in bundle.get("risk_records") or []:
++        print(f"  {record.get('risk_id')}: {record.get('title')} [{record.get('classification')}] owner={record.get('owner')} status={record.get('status')}")
++
++
++def view_seal(bundle):
++    print("== Seal Lifecycle ==")
++    print(f"  seal_status : {bundle.get('seal_status')}")
++    for key in ("seal_id", "sealed_at", "expires", "revoked_at"):
++        if bundle.get(key):
++            print(f"  {key:<11}: {bundle[key]}")
++    status = bundle.get("seal_status")
++    if status == "ACTIVE":
++        print("  seal is ACTIVE")
++    else:
++        print(f"  seal NOT active ({status}) -- gate will DENY")
++
++
++VIEW_FUNCS = {"matrix": view_matrix, "timeline": view_timeline, "risk": view_risk, "seal": view_seal}
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description="Read-only audit dashboard")
++    parser.add_argument("bundle", help="path to evidence bundle JSON")
++    parser.add_argument("--view", choices=VIEWS + ("all",), default="all")
++    args = parser.parse_args(argv)
++    try:
++        bundle = load_bundle(args.bundle)
++    except (OSError, json.JSONDecodeError) as exc:
++        print(f"error: cannot load bundle: {exc}", file=sys.stderr)
++        return 2
++    selected = VIEWS if args.view == "all" else (args.view,)
++    try:
++        for name in selected:
++            VIEW_FUNCS[name](bundle)
++    except BrokenPipeError:
++        return 0
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tools/release/gate_check.py b/tools/release/gate_check.py
+new file mode 100644
+index 0000000..e643362
+--- /dev/null
++++ b/tools/release/gate_check.py
+@@ -0,0 +1,156 @@
++#!/usr/bin/env python3
++"""Release gate check -- evaluates ONLY, read-only, fail-closed.
++
++Usage: gate_check.py <evidence_bundle.json>
++
++Outputs ALLOW (exit 0) or DENY: <reasons> (exit 1). Parse errors also DENY.
++This tool never writes to disk and never mints approvals, seals, or anchors.
++"""
++import hashlib
++import json
++import math
++import re
++import sys
++
++SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
++SLA_HOURS = 120
++NUMERIC_FIELDS = ("evidence_age_hours", "remediation_sla_hours")
++
++
++def load_bundle(path):
++    """Strict JSON parse: NaN/Infinity literals are rejected."""
++    def _bad_constant(text):
++        raise ValueError(f"non-finite numeric literal: {text}")
++    with open(path, "r", encoding="utf-8") as fh:
++        return json.load(fh, parse_constant=_bad_constant)
++
++
++def canonical_sha256(obj):
++    blob = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
++    return hashlib.sha256(blob).hexdigest()
++
++
++def expected_bundle_digest(bundle):
++    return canonical_sha256({
++        "baseline_anchor": bundle.get("baseline_anchor"),
++        "members": bundle.get("members"),
++    })
++
++
++def check_chain(bundle):
++    """Hash chain: genesis prev = baseline_anchor; each member links to the previous."""
++    members = bundle.get("members")
++    if not isinstance(members, list) or not members:
++        return [ "evidence chain empty" ]
++    reasons = []
++    prev = str(bundle.get("baseline_anchor", "")).lower()
++    for index, member in enumerate(members):
++        if not isinstance(member, dict):
++            reasons.append(f"member {index} is not an object")
++            continue
++        digest = member.get("sha256", "")
++        if not SHA256_RE.match(str(digest)):
++            reasons.append(f"member {index} has malformed sha256")
++            continue
++        if str(member.get("prev", "")).lower() != prev:
++            reasons.append(f"member {index} breaks the evidence chain")
++        prev = str(digest).lower()
++    return reasons
++
++
++def finite_numeric_fields(bundle):
++    reasons = []
++    for field in NUMERIC_FIELDS:
++        value = bundle.get(field)
++        if value is None:
++            continue
++        if not isinstance(value, (int, float)) or isinstance(value, bool):
++            reasons.append(f"{field} is not numeric")
++        elif not math.isfinite(value):
++            reasons.append(f"{field} is not finite")
++    return reasons
++
++
++def evaluate(bundle):
++    """Return (allowed, reasons). Fail-closed: any problem denies."""
++    if not isinstance(bundle, dict):
++        return False, ["bundle is not a JSON object"]
++
++    reasons = []
++
++    anchor = bundle.get("baseline_anchor")
++    if not anchor:
++        reasons.append("missing baseline anchor")
++    elif not SHA256_RE.match(str(anchor)):
++        reasons.append("baseline anchor is not a valid sha256 digest")
++
++    digest = bundle.get("bundle_digest")
++    if not digest:
++        reasons.append("missing bundle digest")
++    elif not SHA256_RE.match(str(digest)):
++        reasons.append("bundle digest is not a valid sha256 digest")
++    elif SHA256_RE.match(str(anchor) if anchor else ""):
++        if str(digest).lower() != expected_bundle_digest(bundle):
++            reasons.append("bundle digest mismatch (anchor/members recompute failed)")
++
++    reasons.extend(check_chain(bundle))
++    reasons.extend(finite_numeric_fields(bundle))
++
++    if bundle.get("policy_decision") != "PASS":
++        reasons.append("policy decision is not PASS")
++
++    risk = bundle.get("risk_status")
++    if risk == "UNACCEPTABLE":
++        reasons.append("risk classification is UNACCEPTABLE")
++    elif risk == "CONDITIONALLY_ACCEPTABLE":
++        if bundle.get("ao_approval") is not True:
++            reasons.append("conditional acceptance missing AO approval")
++        controls = bundle.get("compensating_controls")
++        if not isinstance(controls, list) or not controls:
++            reasons.append("conditional acceptance missing compensating controls")
++        sla = bundle.get("remediation_sla_hours")
++        if not isinstance(sla, (int, float)) or isinstance(sla, bool) or not math.isfinite(sla) or sla <= 0 or sla > SLA_HOURS:
++            reasons.append(f"conditional acceptance missing valid remediation SLA (0 < sla <= {SLA_HOURS}h)")
++        if not bundle.get("expiry"):
++            reasons.append("conditional acceptance missing expiry")
++        ledger = bundle.get("ledger_anchor")
++        if not ledger or not SHA256_RE.match(str(ledger)):
++            reasons.append("conditional acceptance missing ledger anchor")
++    elif risk != "ACCEPTABLE":
++        reasons.append("missing or unknown risk status")
++
++    if bundle.get("seal_status") != "ACTIVE":
++        reasons.append(f"seal not ACTIVE (seal_status={bundle.get('seal_status')!r})")
++
++    signoff = bundle.get("auditor_signoff")
++    if not isinstance(signoff, dict) or not signoff.get("signed") or not signoff.get("auditor"):
++        reasons.append("missing auditor signoff")
++
++    age = bundle.get("evidence_age_hours")
++    if isinstance(age, (int, float)) and not isinstance(age, bool) and math.isfinite(age):
++        if age > SLA_HOURS and not bundle.get("staleness_exemption"):
++            reasons.append(f"evidence stale beyond {SLA_HOURS}h SLA without exemption")
++
++    return (len(reasons) == 0), reasons
++
++
++def main(argv=None):
++    argv = argv if argv is not None else sys.argv[1:]
++    if len(argv) != 1:
++        print("usage: gate_check.py <evidence_bundle.json>", file=sys.stderr)
++        return 2
++    try:
++        bundle = load_bundle(argv[0])
++    except (OSError, ValueError, json.JSONDecodeError) as exc:
++        print(f"DENY: unreadable bundle: {exc}")
++        return 1
++    allowed, reasons = evaluate(bundle)
++    if allowed:
++        print("ALLOW")
++        return 0
++    print("DENY: " + "; ".join(reasons))
++    return 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())
