@@ -1,0 +1,15 @@
+{
+  "spec_id": "SPEC-0001",
+  "domain": "Security",
+  "version": "v1.0.0",
+  "artifacts": [
+    {
+      "artifact_id": "opa_policy",
+      "sha256": "f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1"
+    }
+  ],
+  "authority_boundary": {
+    "can_release": false,
+    "can_freeze": false
+  }
+}

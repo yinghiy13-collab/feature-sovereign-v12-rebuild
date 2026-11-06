@@ -1,0 +1,177 @@
+{
+  "scan_timestamp": "2026-11-06T02:56:58.616976+00:00",
+  "files": [
+    {
+      "path": ".gitignore",
+      "size_bytes": 59,
+      "sha256": "ba7307095aca7f44b7daebde6cc372893805b53e63c668b333651f5eb29bd070"
+    },
+    {
+      "path": "dashboard.html",
+      "size_bytes": 4723,
+      "sha256": "22f01a65326b7c8df791f5c177f69ea6fef5b8e9705cb0876575295d9de77641"
+    },
+    {
+      "path": "sovereign-v12-rebuild.patch",
+      "size_bytes": 52612,
+      "sha256": "2b0d251d625fe0af0fe390abfb1c09928a2d2535082302521630359bbeea2ab1"
+    },
+    {
+      "path": "RELEASE_NOTES.md",
+      "size_bytes": 556,
+      "sha256": "277e2c14db0a1b807f79087ab16e07e37d3149cf953e8d257f5388e755cc714c"
+    },
+    {
+      "path": ".pytest_cache/.gitignore",
+      "size_bytes": 37,
+      "sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd"
+    },
+    {
+      "path": ".pytest_cache/CACHEDIR.TAG",
+      "size_bytes": 191,
+      "sha256": "37dc88ef9a0abeddbe81053a6dd8fdfb13afb613045ea1eb4a5c815a74a3bde4"
+    },
+    {
+      "path": ".pytest_cache/README.md",
+      "size_bytes": 302,
+      "sha256": "73fd6fccdd802c419a6b2d983d6c3173b7da97558ac4b589edec2dfe443db9ad"
+    },
+    {
+      "path": ".pytest_cache/v/cache/nodeids",
+      "size_bytes": 2062,
+      "sha256": "f7e5ea639aa6819486189103861d9fc683d6d3154df436f6b9ceb310dc052b84"
+    },
+    {
+      "path": "specs/release-gate-v1.0.0.yaml",
+      "size_bytes": 3556,
+      "sha256": "d52e46d61921c87ea75d32ca535881eb026bec5d8d0a0a5edb7c714f344d3cea"
+    },
+    {
+      "path": "baseline/MASTER_ARTIFACT.md",
+      "size_bytes": 1329,
+      "sha256": "b40d1a9b2d9e59fe63157e993179b2638e87adacb23380703366fb46d7462264"
+    },
+    {
+      "path": "baseline/BASELINE_PIPELINE.md",
+      "size_bytes": 2222,
+      "sha256": "82cd3ca87de9b68fe243bb1af84fc9ab9734195436d48fd3f1794258e948ddc9"
+    },
+    {
+      "path": "baseline/memory.yaml",
+      "size_bytes": 357,
+      "sha256": "157aed595fc336cc388e7f343f9a22f1cfb76687d650266c269c8f2a24485043"
+    },
+    {
+      "path": "baseline/MASTER_STANDARD.md",
+      "size_bytes": 1988,
+      "sha256": "821307d83bd50ddf5b01372cdae0ed221573322d8daa9a0a7cc25bae05000ed7"
+    },
+    {
+      "path": "baseline/RISK_MANAGEMENT_PLAYBOOK.md",
+      "size_bytes": 2416,
+      "sha256": "1e1925f452498857238fb646b070ea6410ed65b885483dbe130c66510320abbf"
+    },
+    {
+      "path": "scripts/generate_inventory.py",
+      "size_bytes": 2153,
+      "sha256": "3aa3544903773951e052becd05c41913b189d3483ad0b55d66d93d6eb8c41d9d"
+    },
+    {
+      "path": "scripts/verify_all.sh",
+      "size_bytes": 5718,
+      "sha256": "1bf04f821ba7960e5da42fba7780a9e1710346d12b6f184ffb6c19cb150ffca1"
+    },
+    {
+      "path": "scripts/generate_dashboard.py",
+      "size_bytes": 3505,
+      "sha256": "15c56e59db36ab1823b4b0cc55317325f863ae687bb5dd8b5f16ac7317d92c02"
+    },
+    {
+      "path": "governance/validate_contract.py",
+      "size_bytes": 1347,
+      "sha256": "40b69bd175fcec4e7bb66e82b9910703e1e6bf47f84483566410d0d264506855"
+    },
+    {
+      "path": "evidence/sample_spec.json",
+      "size_bytes": 309,
+      "sha256": "e90bb7d1861404a1613d2c39bbd0b6d28acc02b8be00908a7ecec4513411bf77"
+    },
+    {
+      "path": "examples/real_evidence_bundle.PASS.json",
+      "size_bytes": 671,
+      "sha256": "8ad8e8e9576cb8550b143ab278322cbc84947bc16ccb9c98522dd2fe5e919949"
+    },
+    {
+      "path": "examples/placeholder_evidence_bundle.json",
+      "size_bytes": 120,
+      "sha256": "1e752c00e4906cb1e8b2751a5ccb75634b039b1fd3a30ed720fce89e99cfa500"
+    },
+    {
+      "path": "policy/baseline.rego",
+      "size_bytes": 1910,
+      "sha256": "d5d4643e0651d191281c79d835f9b0ae825c4e2ddf145386d6f5ce7f7dd44f2e"
+    },
+    {
+      "path": "tests/test_release_gate.py",
+      "size_bytes": 3200,
+      "sha256": "690a810deb0999b9fa42c779aab7620a6b208ced4a174610222a27c053e114ed"
+    },
+    {
+      "path": "tests/test_state_machine.py",
+      "size_bytes": 601,
+      "sha256": "6a92b7c6bbbd3a6b281e5fd65e6704f485afae95506e15364eaccfea4517ad85"
+    },
+    {
+      "path": "tests/test_integration.py",
+      "size_bytes": 2435,
+      "sha256": "75da2e7878b4fa616ee247b06819f2ffdc988dd8ea19aac20738ec7ddd3b5d47"
+    },
+    {
+      "path": "tests/adversarial/test_contract_attacks.py",
+      "size_bytes": 2918,
+      "sha256": "652a87362511def35c8bfd50b1f35dfeec3c81566812053b7008b8a08b69e71a"
+    },
+    {
+      "path": "schemas/domain_registry.yaml",
+      "size_bytes": 667,
+      "sha256": "f74e9d27dc11a161721cacfbc94053fe56f3d6cd6635b151ebd9e611b8e678e3"
+    },
+    {
+      "path": "schemas/state-machine.yaml",
+      "size_bytes": 757,
+      "sha256": "d9acd1545b118da6662c08ec053689714f51bcb045163ee77534d611cfc48326"
+    },
+    {
+      "path": "schemas/canonical_spec.schema.json",
+      "size_bytes": 1128,
+      "sha256": "9e7a153194ced61da9a48336fd13be115434e37e121a34c8a9b673e10c005c0e"
+    },
+    {
+      "path": ".devcontainer/Dockerfile",
+      "size_bytes": 331,
+      "sha256": "75885d9f8d57447d589f13f43ccb25dd0a83619b3ce715614d1fc8b839681bae"
+    },
+    {
+      "path": ".devcontainer/devcontainer.json",
+      "size_bytes": 248,
+      "sha256": "dd0c63745f775a9f45b0ea42ae2280906a1fe80d30842f3b62050b74743d32fe"
+    },
+    {
+      "path": ".devcontainer/post-create.sh",
+      "size_bytes": 230,
+      "sha256": "d8e6ccc3b064a5bdd20912e6a78b855b66e5257bb3a9ccef48565b64cc2bcb4b"
+    },
+    {
+      "path": "tools/release/gate_check.py",
+      "size_bytes": 2722,
+      "sha256": "7373e7519f2b27164c6c062873a45a369ffbe58784eeb449dd0dd8238910b435"
+    },
+    {
+      "path": "tools/release/state_machine.py",
+      "size_bytes": 6603,
+      "sha256": "1d9fc3ec0597422420aed927dbfd6471f3981af471caa9feb58b4060c7156412"
+    }
+  ],
+  "skills": [],
+  "protected_baseline": []
+}

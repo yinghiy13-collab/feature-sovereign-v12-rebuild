@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Engineering Specification",
+  "type": "object",
+  "properties": {
+    "spec_id": {"type": "string", "pattern": "^SPEC-[0-9]{4}$"},
+    "domain": {
+      "type": "string",
+      "enum": ["Security", "Runtime", "Codex", "Cowork", "Prompt", "Stack", "Patch"]
+    },
+    "version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "artifact_id": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "provenance_url": {"type": "string", "format": "uri"}
+        },
+        "required": ["artifact_id", "sha256"]
+      }
+    },
+    "authority_boundary": {
+      "type": "object",
+      "properties": {
+        "can_release": {"type": "boolean", "const": false},
+        "can_freeze": {"type": "boolean", "const": false}
+      },
+      "required": ["can_release", "can_freeze"]
+    }
+  },
+  "required": ["spec_id", "domain", "version", "artifacts", "authority_boundary"]
+}
