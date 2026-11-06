@@ -1,0 +1,10 @@
+# Baseline state schema — PLACEHOLDER. No live state is recorded in this file.
+schema_version: "1.0"
+state: DRAFT
+baseline_anchor: null
+seals: []
+risk_register_ref: baseline/RISK_MANAGEMENT_PLAYBOOK.md
+ledger_ref: null
+notes: >-
+  Placeholder schema only. Per MASTER_STANDARD.md, only the Operator freezes,
+  and the Policy Agent never writes state here.

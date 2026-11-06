@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-11-06T02:56:58.616976+00:00",
+  "scan_timestamp": "2026-11-06T03:00:34.032528+00:00",
   "files": [
     {
       "path": ".gitignore",
@@ -170,6 +170,21 @@
       "path": "tools/release/state_machine.py",
       "size_bytes": 6603,
       "sha256": "1d9fc3ec0597422420aed927dbfd6471f3981af471caa9feb58b4060c7156412"
+    },
+    {
+      "path": "inventory_reports/CAPABILITY_COVERAGE_MATRIX.csv",
+      "size_bytes": 33,
+      "sha256": "8c5fbd4bfa6282f9ab8137a8406927e5611a088149311bea9cd5733c365d88dd"
+    },
+    {
+      "path": "inventory_reports/PROTECTED_BASELINE_REPORT.md",
+      "size_bytes": 136,
+      "sha256": "8b92c99019cfd467e269137041a9fdf8cd6a23089345827fd128f0b5b712651f"
+    },
+    {
+      "path": "inventory_reports/REPOSITORY_INVENTORY.json",
+      "size_bytes": 5784,
+      "sha256": "628a192e38069c51875304ca48ab6c8aaa41e9ed36633835bc5ab770abf545d0"
     }
   ],
   "skills": [],
