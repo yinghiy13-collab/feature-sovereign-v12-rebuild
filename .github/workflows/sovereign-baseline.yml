@@ -34,3 +34,4 @@ jobs:
           name: verify-evidence-${{ github.run_id }}
           path: .verify/
           retention-days: 30
+          include-hidden-files: true
