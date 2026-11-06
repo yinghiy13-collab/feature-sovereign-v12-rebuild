@@ -1,20 +1,12 @@
-# Release v1.0.0 - Sovereign Release Gate (Frozen)
+# Release v1.0.1 - Sovereign Release Gate (CI Patch)
 
 **Release Date:** 2026-11-06
-**Commit:** `f1fa530`
-**CI Status:** PASSED (GitHub Actions)
+**Base Version:** v1.0.0
+**Status:** PATCHED & FROZEN
+
+## Changes in this Patch
+- **CI Fix:** Added `include-hidden-files: true` to the GitHub Actions `upload-artifact` step. This ensures the `.verify/` directory (containing all test evidence) is successfully uploaded and downloadable as an artifact on GitHub.
+- No changes to the core gate logic (`gate_check.py`, `baseline.rego`, or `state_machine.py`).
 
 ## Evidence
-Full verification evidence is stored at:
-`.verify/20261106T004731Z/summary.json`
-
-## Verification Summary
-- Total Checks: 11
-- Passed: 11
-- Failed: 0
-
-## Key Changes
-- Implemented strict Fail-Closed content gate and actor gate.
-- Added Rego M1-M4 guardrails and strict type checks.
-- Removed time-bomb (no `datetime.now` in runtime).
-- Enforced global denied roles (AI/Copilot) before any_role check.
+All 11 checks passed successfully in GitHub Actions.
