@@ -1,0 +1,107 @@
+apiVersion: sovereign.example.com/v1
+kind: ReleaseGateSpec
+metadata:
+  name: sovereign-release-gate
+  version: 1.0.0
+  frozen_at: "2026-11-06T00:00:00Z"
+  risk_ref: RISK-0002
+  slo:
+    evidence_max_age_hours: 120
+
+spec:
+  content_gate:
+    command: "python3 tools/release/gate_check.py <bundle> [--json]"
+    exit_codes: {"0": PASS, "1": DENY, "2": BAD_USAGE}
+
+    input_contract:
+      type: object
+      required_fields:
+        baseline_anchor:    {type: string, pattern: "^[0-9a-fA-F]{64}$"}
+        policy_decision:    {type: string, enum: [PASS]}
+        risk_status:        {type: string, enum: [ACCEPTABLE]}
+        seal_status:        {type: string, enum: [ACTIVE]}
+        auditor_signoff:    {type: object, required_keys: [signed], signed_must_be: true}
+        members:            {type: array, min_items: 1}
+        evidence_age_hours: {type: number, max: 120, exclusive_of: [bool]}
+      null_policy: DENY
+      non_object_policy: DENY
+
+    deny_reasons:
+      - "input is not an object"
+      - "missing or null: {field}"
+      - "baseline_anchor is not a valid sha256"
+      - "policy_decision is not PASS"
+      - "risk_status is not ACCEPTABLE"
+      - "seal_status is not ACTIVE"
+      - "auditor_signoff is not an object"
+      - "auditor_signoff is not signed"
+      - "members is not an array"
+      - "members is empty"
+      - "evidence_age_hours is not a number"
+      - "evidence_age_hours is stale"
+
+    invariants:
+      - "count(denies) == 0 iff decision == PASS"
+      - "1 wrong field => exactly 1 deny reason"
+      - "output.denies is sorted (deterministic)"
+      - "no datetime.now in runtime path"
+
+    staleness:
+      source_of_truth: evidence_age_hours
+      max_hours: 120
+      boundary_inclusive: true
+      timestamp_based: NOT_IN_V1
+
+  actor_gate:
+    command: "python3 tools/release/state_machine.py {validate|check} ..."
+    spec_file: schemas/state-machine.yaml
+    exit_codes: {"0": OK, "1": SPEC_INVALID_OR_DENIED, "2": BAD_USAGE}
+
+    role_semantics:
+      absent_role_allowed: system_triggered
+      empty_role_allowed:  SPEC_ERROR
+      any_role_true:       any_human_actor
+      automatic_true:      explicit_system_triggered
+      denied_beats_allowed: true
+      global_denied_beats_any_role: true
+
+    invariants:
+      - "role_allowed:[] without any_role/automatic => exit 1"
+      - "role_allowed ∩ role_denied != empty => exit 1"
+      - "automatic transition => CLI actor cannot trigger"
+      - "global_denied_roles checked BEFORE any_role"
+      - "self-transition => exit 1"
+      - "duplicate (from,to) => exit 1"
+      - "unreachable state => exit 1"
+
+  freeze_authorization:
+    required_conditions:
+      - "content_gate.decision == PASS"
+      - "actor_gate.check(PENDING_AO_REVIEW -> FROZEN, actor=Operator) == ALLOW"
+    violation_policy: FAIL_CLOSED
+
+  evidence:
+    bundle_must_contain:
+      - bundle_id
+      - bundle_digest
+      - baseline_anchor
+      - members[]
+      - policy_decision
+      - risk_status
+      - seal_status
+      - auditor_signoff
+      - evidence_age_hours
+    hash_mode: format_only
+    verification_artifacts:
+      - ".verify/<timestamp>/summary.json"
+      - ".verify/<timestamp>/*.out"
+      - ".verify/<timestamp>/*.status"
+
+  roadmap:
+    v1_1:
+      - "automatic:true on DRAFT->PENDING and FROZEN->UNACCEPTABLE"
+      - "check command validates spec before evaluating transition"
+    v2:
+      - "timestamp-based staleness + libfaketime tests"
+      - "hash_mode: real (recompute member sha256)"
+      - "external auditor signature verification"

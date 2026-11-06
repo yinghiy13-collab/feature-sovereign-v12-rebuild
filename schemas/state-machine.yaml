@@ -1,0 +1,25 @@
+state_machine:
+  initial: DRAFT
+  states: [DRAFT, PENDING_AO_REVIEW, FROZEN, UNACCEPTABLE]
+  transitions:
+    - from: DRAFT
+      to: PENDING_AO_REVIEW
+      when: "risk_register_ref all != PENDING_REVIEW"
+      role_allowed: [Operator]
+    - from: PENDING_AO_REVIEW
+      to: FROZEN
+      when: "Operator runs OPERATOR_FREEZE_RUNBOOK and gate_check PASS"
+      role_allowed: [Operator]
+    - from: FROZEN
+      to: UNACCEPTABLE
+      when: "evidence age > 120h and no exemption"
+      role_allowed: [Operator]
+
+metadata:
+  global_denied_roles: [AI, Copilot]
+  title: Baseline staleness policy
+  description: Denies evidence older than 120h per RISK-0002
+  custom:
+    risk_ref: RISK-0002
+    sla: 120h
+    policy_agent_actions: [deny]   # machine-readable
