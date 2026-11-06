@@ -1,23 +1,9 @@
 version: "1.0"
 domains:
-  Security:
-    authority: "Read-only Evaluator"
-    mandate: "Verify OPA policies, secrets, supply chain"
-  Runtime:
-    authority: "Observer"
-    mandate: "Replay state, verify fail-closed logic"
-  Codex:
-    authority: "Validator"
-    mandate: "Check schema, AST, canonical drift"
-  Cowork:
-    authority: "Orchestrator"
-    mandate: "Route tasks, enforce persona matrix"
-  Prompt:
-    authority: "Auditor"
-    mandate: "Scan prompt injections, verify lineage"
-  Stack:
-    authority: "Verifier"
-    mandate: "Cross-layer dependency checks"
-  Patch:
-    authority: "Evaluator"
-    mandate: "Assess evidence bundle, staleness, release gate"
+  Security: { authority: "Read-only Evaluator", mandate: "Verify OPA policies, secrets, supply chain" }
+  Runtime:  { authority: "Observer", mandate: "Replay state, verify fail-closed logic" }
+  Codex:    { authority: "Validator", mandate: "Check schema, AST, canonical drift" }
+  Cowork:   { authority: "Orchestrator", mandate: "Route tasks, enforce persona matrix" }
+  Prompt:   { authority: "Auditor", mandate: "Scan prompt injections, verify lineage" }
+  Stack:    { authority: "Verifier", mandate: "Cross-layer dependency checks" }
+  Patch:    { authority: "Evaluator", mandate: "Assess evidence bundle, staleness, release gate" }
